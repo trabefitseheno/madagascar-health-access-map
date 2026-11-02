@@ -1,0 +1,111 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Madagascar: Travel Time to Health Centres</title>
+<link rel="icon" href="data:,">
+<link rel="stylesheet" href="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.css">
+<style>
+:root{--bg:#fff;--fg:#1c2530;--card:#fffffff0;--b1:#1a9850;--b2:#fee08b;--b3:#f46d43;--b4:#a50026}
+@media (prefers-color-scheme:dark){:root{--bg:#10151b;--fg:#e8edf2;--card:#1a222cf0}}
+*{box-sizing:border-box}html,body{margin:0;height:100%;background:var(--bg);color:var(--fg);font:15px/1.45 system-ui,sans-serif}
+#map{position:absolute;inset:0}
+.panel{position:absolute;z-index:2;top:12px;left:12px;max-width:340px;max-height:calc(100% - 24px);overflow:auto;background:var(--card);border-radius:10px;padding:12px 14px;box-shadow:0 2px 12px #0004}
+h1{font-size:1.1rem;margin:0 0 6px}h2{font-size:.85rem;margin:10px 0 4px}p,ul{margin:4px 0;font-size:.85rem}ul{padding-left:18px}
+.row{display:flex;align-items:center;gap:8px;font-size:.85rem;margin:3px 0}.sw{width:18px;height:14px;border-radius:3px;flex:none}.dot{width:12px;height:12px;border-radius:50%;border:2px solid #fff;flex:none;margin:0 3px}
+label.row{cursor:pointer}input[type=checkbox]{margin:0;width:16px;height:16px}
+button.t{float:right;border:0;background:none;color:inherit;font-size:1rem;cursor:pointer}
+#status{font-size:.8rem;opacity:.8}
+@media (max-width:600px){.panel{left:8px;right:8px;top:auto;bottom:8px;max-width:none;max-height:45%}}
+.maplibregl-popup-content{color:#1c2530;font-size:.85rem;max-width:260px}
+</style>
+</head>
+<body>
+<div id="map" role="application" aria-label="Map of travel time to nearest health centre in Madagascar"></div>
+<div class="panel" id="panel">
+  <button class="t" id="tog" aria-label="Collapse panel" aria-expanded="true">–</button>
+  <h1>How far is the nearest health centre?</h1>
+  <div id="body">
+    <p><b>How to read this:</b> each colour shows the motorised travel time from that area to the nearest health centre. Click a shape for details.</p>
+    <h2>Travel time (tick to show or hide)</h2>
+    <label class="row"><input type="checkbox" data-band="under_1h" checked><span class="sw" style="background:var(--b1)"></span>Under 1 hour</label>
+    <label class="row"><input type="checkbox" data-band="1_to_2h" checked><span class="sw" style="background:var(--b2)"></span>1 to 2 hours</label>
+    <label class="row"><input type="checkbox" data-band="2_to_4h" checked><span class="sw" style="background:var(--b3)"></span>2 to 4 hours</label>
+    <label class="row"><input type="checkbox" data-band="over_4h" checked><span class="sw" style="background:var(--b4)"></span>Over 4 hours</label>
+    <h2>Health facilities mapped in OpenStreetMap</h2>
+    <label class="row"><input type="checkbox" data-fac="hospital" checked><span class="dot" style="background:#1f4e9c"></span>Hospitals</label>
+    <label class="row"><input type="checkbox" data-fac="clinic" checked><span class="dot" style="background:#7b3294"></span>Clinics</label>
+    <label class="row"><input type="checkbox" data-fac="health_post" checked><span class="dot" style="background:#008c8c"></span>Health posts (nurses, community health workers)</label>
+    <label class="row"><input type="checkbox" data-fac="doctor"><span class="dot" style="background:#555"></span>Doctors</label>
+    <p id="status">Loading data…</p>
+    <h2>Caveats</h2>
+    <ul><li>Road data in the source has not been validated.</li><li>Health sites in the travel-time data were filtered to those likely to offer child-focused services.</li><li>The dots come from OpenStreetMap, a different source. Mapping is uneven, so an empty area may mean unmapped, not no facility.</li></ul>
+    <h2>Credit</h2>
+    <p>Travel time: Data for Children Collaborative (2024), HDX, CC BY 4.0. Watmough et al. (2022), <i>Scientific Data</i>, doi:10.1038/s41597-022-01274-w. Facilities: © OpenStreetMap contributors, ODbL 1.0 (Geofabrik extract, 30 Oct 2026).</p>
+  </div>
+</div>
+<script src="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.js"></script>
+<script src="/site/config.js"></script>
+<script>
+const LABEL={under_1h:"Under 1 hour","1_to_2h":"1 to 2 hours","2_to_4h":"2 to 4 hours",over_4h:"Over 4 hours"};
+const COLOR=["match",["get","band"],"under_1h","#1a9850","1_to_2h","#fee08b","2_to_4h","#f46d43","over_4h","#a50026","#999"];
+const cfg=window.MAP_CONFIG||{};
+const style=cfg.apiKey?`https://maps.geo.${cfg.region}.amazonaws.com/v2/styles/Standard/descriptor?key=${cfg.apiKey}`
+  :{version:8,sources:{},layers:[{id:"bg",type:"background",paint:{"background-color":"#dfe7ee"}}]};
+const tog=document.getElementById("tog"),body=document.getElementById("body");
+tog.onclick=()=>{const h=body.hidden=!body.hidden;tog.textContent=h?"+":"–";tog.setAttribute("aria-expanded",!h)};
+if(matchMedia("(max-width:600px)").matches){body.hidden=true;tog.textContent="+";tog.setAttribute("aria-expanded","false")}
+const cv=document.createElement("canvas");
+if(!(cv.getContext("webgl2")||cv.getContext("webgl"))){
+  document.getElementById("status").textContent="This map needs WebGL, which is turned off in this browser. Enable hardware acceleration or try another browser.";
+  body.hidden=false;
+  throw new Error("WebGL unavailable");
+}
+const map=new maplibregl.Map({container:"map",style,center:[46.9,-19.4],zoom:5,minZoom:4,maxZoom:11});
+map.addControl(new maplibregl.NavigationControl({showCompass:false}));
+map.addControl(new maplibregl.AttributionControl({compact:true,customAttribution:"Travel time: Data for Children Collaborative, CC BY 4.0 | Facilities: © OpenStreetMap contributors"}));
+const st=document.getElementById("status");
+map.on("load",()=>{
+  map.addSource("tt",{type:"geojson",data:"/data/madagascar_travel_time_bands_light.geojson"});
+  map.addLayer({id:"bands",type:"fill",source:"tt",paint:{"fill-color":COLOR,"fill-opacity":0.5}});
+  map.addSource("fac",{type:"geojson",data:"/data/madagascar_health_facilities.geojson"});
+  map.addLayer({id:"facilities",type:"circle",source:"fac",paint:{
+    "circle-radius":["interpolate",["linear"],["zoom"],4,2.5,9,6],
+    "circle-color":["match",["get","type"],"hospital","#1f4e9c","clinic","#7b3294","health_post","#008c8c","#555"],
+    "circle-stroke-color":"#fff","circle-stroke-width":1}});
+  const setBands=()=>{const on=[...document.querySelectorAll("[data-band]")].filter(c=>c.checked).map(c=>c.dataset.band);
+    map.setFilter("bands",["in",["get","band"],["literal",on]])};
+  const setFac=()=>{const on=[...document.querySelectorAll("[data-fac]")].filter(c=>c.checked).map(c=>c.dataset.fac);
+    map.setFilter("facilities",["in",["get","type"],["literal",on]])};
+  document.querySelectorAll("[data-band]").forEach(c=>c.onchange=setBands);
+  document.querySelectorAll("[data-fac]").forEach(c=>c.onchange=setFac);
+  setFac();
+  map.on("sourcedata",e=>{if(e.sourceId==="tt"&&map.isSourceLoaded("tt"))st.textContent="Data loaded."});
+  const FT={hospital:"Hospital",clinic:"Clinic",health_post:"Health post",doctor:"Doctor"};
+  map.on("click","facilities",e=>{
+    const p=e.features[0].properties;
+    const h=document.createElement("div");
+    const b=document.createElement("b");b.textContent=p.name||"Unnamed facility";h.append(b,document.createElement("br"));
+    h.append(FT[p.type]||p.type,document.createElement("br"));
+    const s=document.createElement("small");s.textContent="© OpenStreetMap contributors, ODbL";h.append(s);
+    new maplibregl.Popup().setLngLat(e.features[0].geometry.coordinates).setDOMContent(h).addTo(map);
+  });
+  map.on("mouseenter","facilities",()=>map.getCanvas().style.cursor="pointer");
+  map.on("mouseleave","facilities",()=>map.getCanvas().style.cursor="");
+  map.on("click","bands",e=>{
+    if(map.queryRenderedFeatures(e.point,{layers:["facilities"]}).length)return;
+    const p=e.features[0].properties;
+    const h=document.createElement("div");
+    const b=document.createElement("b");b.textContent=LABEL[p.band]||p.band;h.append(b,document.createElement("br"));
+    h.append("Travel time to nearest health centre",document.createElement("br"));
+    const s=document.createElement("small");s.textContent="Travel time: Data for Children Collaborative (2024), HDX, CC BY 4.0; Watmough et al. (2022), Scientific Data, doi:10.1038/s41597-022-01274-w.";h.append(s);
+    new maplibregl.Popup().setLngLat(e.lngLat).setDOMContent(h).addTo(map);
+  });
+  map.on("mouseenter","bands",()=>map.getCanvas().style.cursor="pointer");
+  map.on("mouseleave","bands",()=>map.getCanvas().style.cursor="");
+});
+map.on("error",e=>{console.error(e.error);st.textContent="Could not load some map data."});
+</script>
+</body>
+</html>
