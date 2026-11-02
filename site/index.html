@@ -71,7 +71,7 @@ map.on("load",()=>{
   map.addLayer({id:"bands",type:"fill",source:"tt",paint:{"fill-color":COLOR,"fill-opacity":0.5}});
   map.addSource("fac",{type:"geojson",data:"/data/madagascar_health_facilities.geojson"});
   map.addLayer({id:"facilities",type:"circle",source:"fac",paint:{
-    "circle-radius":["interpolate",["linear"],["zoom"],4,2.5,9,6],
+    "circle-radius":["interpolate",["linear"],["zoom"],4,3.5,9,7],
     "circle-color":["match",["get","type"],"hospital","#1f4e9c","clinic","#7b3294","health_post","#008c8c","#555"],
     "circle-stroke-color":"#fff","circle-stroke-width":1}});
   const setBands=()=>{const on=[...document.querySelectorAll("[data-band]")].filter(c=>c.checked).map(c=>c.dataset.band);
@@ -83,24 +83,25 @@ map.on("load",()=>{
   setFac();
   map.on("sourcedata",e=>{if(e.sourceId==="tt"&&map.isSourceLoaded("tt"))st.textContent="Data loaded."});
   const FT={hospital:"Hospital",clinic:"Clinic",health_post:"Health post",doctor:"Doctor"};
-  map.on("click","facilities",e=>{
-    const p=e.features[0].properties;
+  const popup=(ll,node)=>new maplibregl.Popup({maxWidth:"280px"}).setLngLat(ll).setDOMContent(node).addTo(map);
+  map.on("click",e=>{
+    const pad=window.matchMedia("(pointer:coarse)").matches?22:10;
+    const box=[[e.point.x-pad,e.point.y-pad],[e.point.x+pad,e.point.y+pad]];
+    const fs=map.queryRenderedFeatures(box,{layers:["facilities"]});
     const h=document.createElement("div");
-    const b=document.createElement("b");b.textContent=p.name||"Unnamed facility";h.append(b,document.createElement("br"));
-    h.append(FT[p.type]||p.type,document.createElement("br"));
-    const s=document.createElement("small");s.textContent="© OpenStreetMap contributors, ODbL";h.append(s);
-    new maplibregl.Popup().setLngLat(e.features[0].geometry.coordinates).setDOMContent(h).addTo(map);
-  });
-  map.on("mouseenter","facilities",()=>map.getCanvas().style.cursor="pointer");
-  map.on("mouseleave","facilities",()=>map.getCanvas().style.cursor="");
-  map.on("click","bands",e=>{
-    if(map.queryRenderedFeatures(e.point,{layers:["facilities"]}).length)return;
-    const p=e.features[0].properties;
-    const h=document.createElement("div");
-    const b=document.createElement("b");b.textContent=LABEL[p.band]||p.band;h.append(b,document.createElement("br"));
-    h.append("Travel time to nearest health centre",document.createElement("br"));
+    if(fs.length){
+      const near=fs.map(f=>{const q=map.project(f.geometry.coordinates);return[Math.hypot(q.x-e.point.x,q.y-e.point.y),f]}).sort((a,b)=>a[0]-b[0])[0][1];
+      const p=near.properties,b=document.createElement("b");b.textContent=p.name||"Unnamed facility";
+      h.append(b,document.createElement("br"),FT[p.type]||p.type,document.createElement("br"));
+      const s=document.createElement("small");s.textContent="© OpenStreetMap contributors, ODbL";h.append(s);
+      popup(near.geometry.coordinates,h);return;
+    }
+    const bs=map.queryRenderedFeatures(e.point,{layers:["bands"]});
+    if(!bs.length)return;
+    const p=bs[0].properties,b=document.createElement("b");b.textContent=LABEL[p.band]||p.band;
+    h.append(b,document.createElement("br"),"Travel time to nearest health centre",document.createElement("br"));
     const s=document.createElement("small");s.textContent="Travel time: Data for Children Collaborative (2024), HDX, CC BY 4.0; Watmough et al. (2022), Scientific Data, doi:10.1038/s41597-022-01274-w.";h.append(s);
-    new maplibregl.Popup().setLngLat(e.lngLat).setDOMContent(h).addTo(map);
+    popup(e.lngLat,h);
   });
   map.on("mouseenter","bands",()=>map.getCanvas().style.cursor="pointer");
   map.on("mouseleave","bands",()=>map.getCanvas().style.cursor="");
